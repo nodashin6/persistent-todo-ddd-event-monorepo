@@ -407,6 +407,8 @@ services:
       - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       # Initial schema for the application
       - ./volumes/db/100-initial-schema.sql:/docker-entrypoint-initdb.d/migrations/100-initial-schema.sql:Z
+      # Trigger for persistent todos
+      - ./volumes/db/101-persistent-todos-trigger.sql:/docker-entrypoint-initdb.d/migrations/101-persistent-todos-trigger.sql:Z
       # Use named volume to persist pgsodium decryption key between restarts
       - db-config:/etc/postgresql-custom
     healthcheck:
@@ -533,6 +535,7 @@ services:
     build:
       context: ./backend/monorepo/todo_app
       dockerfile: Dockerfile
+    command: ["uvicorn", "todo_app.presentation.api:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
     volumes:
       - ./backend/monorepo/todo_app:/app
     ports:
@@ -548,7 +551,7 @@ services:
     build:
       context: ./backend/monorepo/todo_app
       dockerfile: Dockerfile
-    command: ["python", "-m", "todo_app.worker"]
+    command: ["python", "-m", "todo_app.worker_entrypoint"]
     volumes:
       - ./backend/monorepo/todo_app:/app
     depends_on:
