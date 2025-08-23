@@ -1,16 +1,12 @@
 import time
 import json
-from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .application.services import TodoWorkerService
-from .infrastructure.repositories import SQLAlchemyTodoRepository
-from .infrastructure.database import get_db
+from .infrastructure.unit_of_work import SQLAlchemyUnitOfWork
 
 
-def process_message(db_session: Session, msg: dict):
-    repo = SQLAlchemyTodoRepository(db_session)
-    worker_service = TodoWorkerService(repo)
-
+def process_message(uow: SQLAlchemyUnitOfWork, msg: dict):
+    worker_service = TodoWorkerService(uow)
     action = msg.get("action")
     if action == "create":
         worker_service.create_todo(task=msg["task"])
@@ -23,29 +19,34 @@ def process_message(db_session: Session, msg: dict):
 def main():
     print("Starting worker...")
     while True:
-        db_session = next(get_db())
         try:
-            result = db_session.execute(
-                text("SELECT * FROM pgmq.read('todo_queue', 1, 1)")
-            ).first()
-            if result:
-                msg_id, _, _, _, message = result
-                print(f"Processing message {msg_id}: {message}")
-                try:
-                    process_message(db_session, json.loads(message))
-                    db_session.execute(
+            with SQLAlchemyUnitOfWork() as uow:
+                result = uow.session.execute(
+                    text("SELECT * FROM pgmq.read('todo_queue', 1, 1)")
+                ).first()
+
+                if result:
+                    msg_id, _, _, _, message_str = result
+                    print(f"Processing message {msg_id}: {message_str}")
+
+                    message_data = json.loads(message_str)
+                    process_message(uow, message_data)
+
+                    uow.session.execute(
                         text("SELECT pgmq.delete('todo_queue', :msg_id)"),
                         {"msg_id": msg_id},
                     )
-                    db_session.commit()
+                    uow.commit()
                     print(f"Message {msg_id} processed and deleted.")
-                except Exception as e:
-                    print(f"Error processing message {msg_id}: {e}")
-            else:
-                print("No messages in queue. Waiting...")
-                time.sleep(5)
-        finally:
-            db_session.close()
+                else:
+                    # No commit needed if no message is processed
+                    print("No messages in queue. Waiting...")
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            # The UoW will rollback automatically on exception
+
+        time.sleep(5)
 
 
 if __name__ == "__main__":
