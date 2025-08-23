@@ -21,16 +21,20 @@ class TodoService:
         return self.todo_repo.list()
 
 
+from ..infrastructure.unit_of_work import AbstractUnitOfWork
+
+
 class TodoWorkerService:
-    def __init__(self, todo_repo: TodoRepository):
-        self.todo_repo = todo_repo
+    def __init__(self, uow: AbstractUnitOfWork):
+        self.uow = uow
 
     def create_todo(self, task: str):
+        # The UoW context is managed by the caller (the worker entrypoint)
         todo = Todo.create(task=task)
-        self.todo_repo.add(todo)
+        self.uow.todos.add(todo)
 
     def complete_todo(self, todo_id: int):
-        todo = self.todo_repo.get(todo_id)
+        # The UoW context is managed by the caller (the worker entrypoint)
+        todo = self.uow.todos.get(todo_id)
         if todo:
             todo.complete()
-            self.todo_repo.update(todo)

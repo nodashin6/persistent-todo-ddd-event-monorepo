@@ -9,7 +9,7 @@ class Todo(Base):
     task = Column(Text, nullable=False)
     is_completed = Column(Boolean, default=False)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    updated_at = Column(BigInteger, nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class PTodo(Base):
