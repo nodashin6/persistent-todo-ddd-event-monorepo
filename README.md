@@ -6,7 +6,7 @@ This is a TODO application that uses a message queue for all server-side process
 
 ## Tech Stack
 
-- **Backend**: Python 3.12 with FastAPI and uv
+- **Backend**: Python 3.12 with FastAPI
 - **Frontend**: Next.js with React and Tailwind CSS v4
 - **Database**: Supabase (self-hosted PostgreSQL)
 - **Message Queue**: pgmq (a Supabase extension for message queues)
@@ -24,6 +24,25 @@ The frontend is a Next.js application that provides the user interface for manag
 
 The backend is a FastAPI application that exposes a REST API for the frontend. All write operations (create, update, delete) are handled by publishing messages to a `pgmq` message queue. The backend does not directly write to the database tables.
 
+#### Backend Architecture Details
+
+The backend is structured following the principles of **Clean Architecture** and **Domain-Driven Design (DDD)**. The code is organized into four distinct layers:
+
+-   **`domain`**: Contains the core business logic, including domain models (Aggregates, Entities), events, and repository interfaces. This layer has no dependencies on other layers.
+-   **`application`**: Contains application-specific logic. It uses domain models and repositories to perform tasks. This layer defines the `AbstractUnitOfWork` and includes application services that orchestrate the business logic.
+-   **`infrastructure`**: Contains the implementation details for external concerns like databases, message queues, etc. It provides concrete implementations of the repository interfaces defined in the domain layer and the Unit of Work from the application layer.
+-   **`presentation`**: The outermost layer, responsible for presenting data to the user and handling user input. In this case, it's the FastAPI application, defining API endpoints and handling HTTP requests and responses.
+
+This separation of concerns makes the application more modular, testable, and maintainable.
+
+#### Unit of Work (UoW)
+
+The application uses the **Unit of Work pattern** to manage transactions. The `AbstractUnitOfWork` provides an interface for committing or rolling back a set of operations as a single atomic unit. This ensures data consistency across different repositories and services. Both a `SQLAlchemyUnitOfWork` (for production) and an `InMemoryUnitOfWork` (for testing) are implemented.
+
+#### Asynchronous Operations
+
+As described, write operations like creating a `Todo` are handled asynchronously via a message queue (`pgmq`). A dedicated worker process listens to the queue and processes messages, decoupling the API from the database writes and improving responsiveness.
+
 ### Database
 
 The database is a self-hosted Supabase instance (PostgreSQL). It contains the tables for the application and the `pgmq` extension for the message queue.
@@ -31,6 +50,40 @@ The database is a self-hosted Supabase instance (PostgreSQL). It contains the ta
 ### Message Queue
 
 All server-side processing is done via a message queue using `pgmq`. When a user action requires a change to the database, the backend publishes a message to a queue. A separate worker process (or a database trigger) consumes messages from the queue and performs the necessary database operations.
+
+## Implemented Features (Backend)
+
+The backend currently supports the following features:
+
+-   **User Authentication**:
+    -   User registration (`POST /users/`).
+    -   Login to get a JWT access token (`POST /token`).
+-   **Todos**:
+    -   Create, read, update, delete Todos.
+    -   All Todo endpoints are protected and user-specific.
+-   **Subtasks**:
+    -   Create, update, delete Subtasks for a given Todo.
+    -   Endpoints are nested under `/todos/{todo_id}/subtasks/`.
+
+## Testing
+
+The backend includes a comprehensive test suite using `pytest`.
+
+### Testing Strategy
+
+To ensure tests are fast, reliable, and independent of external services, the test suite runs against an **in-memory backend**.
+
+-   **In-Memory Repositories**: Concrete repository implementations that store data in Python dictionaries instead of a database.
+-   **In-Memory Unit of Work**: A test-specific `InMemoryUnitOfWork` that uses the in-memory repositories and a mock message queue.
+-   **Dependency Injection Overrides**: FastAPI's dependency override mechanism is used to swap the real `SQLAlchemyUnitOfWork` with the `InMemoryUnitOfWork` during testing. This allows the same application code to be tested against a fake backend.
+
+### Running Tests
+
+To run the tests, navigate to the `backend/monorepo/todo_app` directory and run:
+
+```bash
+pytest
+```
 
 ## Data Model
 

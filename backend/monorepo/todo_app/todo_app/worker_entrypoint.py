@@ -9,9 +9,9 @@ def process_message(uow: SQLAlchemyUnitOfWork, msg: dict):
     worker_service = TodoWorkerService(uow)
     action = msg.get("action")
     if action == "create":
-        worker_service.create_todo(task=msg["task"])
+        worker_service.create_todo(task=msg["task"], user_id=msg["user_id"])
     elif action == "complete":
-        worker_service.complete_todo(todo_id=msg["todo_id"])
+        worker_service.complete_todo(todo_id=msg["todo_id"], user_id=msg["user_id"])
     else:
         print(f"Unknown action: {action}")
 
@@ -21,9 +21,7 @@ def main():
     while True:
         try:
             with SQLAlchemyUnitOfWork() as uow:
-                result = uow.session.execute(
-                    text("SELECT * FROM pgmq.read('todo_queue', 1, 1)")
-                ).first()
+                result = uow.mq.read(queue_name="todo_queue", count=1, visibility_timeout=10)
 
                 if result:
                     msg_id, _, _, _, message_str = result
@@ -32,10 +30,8 @@ def main():
                     message_data = json.loads(message_str)
                     process_message(uow, message_data)
 
-                    uow.session.execute(
-                        text("SELECT pgmq.delete('todo_queue', :msg_id)"),
-                        {"msg_id": msg_id},
-                    )
+                    uow.mq.delete(queue_name="todo_queue", msg_id=msg_id)
+
                     uow.commit()
                     print(f"Message {msg_id} processed and deleted.")
                 else:
